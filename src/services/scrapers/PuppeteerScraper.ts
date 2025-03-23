@@ -33,23 +33,43 @@ export class PuppeteerScraper extends BaseScraper {
 
       // Set viewport and user agent
       await page.setViewport({ width: 1366, height: 768 });
-      await page.setUserAgent(this.options.userAgent || '');
+      await page.setUserAgent(
+        this.options.userAgent ||
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      );
 
-      // Set timeout
-      await page.setDefaultNavigationTimeout(this.options.timeout || 30000);
+      // Set timeout - increase for WSJ which can be slower to load
+      const timeout = this.source.name.includes('Wall Street Journal')
+        ? 60000 // 60 seconds for WSJ
+        : this.options.timeout || 30000;
+
+      await page.setDefaultNavigationTimeout(timeout);
 
       // Navigate to the URL
       await page.goto(this.source.url, { waitUntil: 'networkidle2' });
 
-      // Wait for the content to load
-      if (this.source.selectors.article) {
-        await page.waitForSelector(this.source.selectors.article, {
-          timeout: this.options.timeout || 30000,
-        });
-      } else {
-        await page.waitForSelector(this.source.selectors.title, {
-          timeout: this.options.timeout || 30000,
-        });
+      // Handle cookie consent dialogs
+      await this.handleCookieConsent(page);
+
+      // Handle paywalls if needed
+      await this.handlePaywall(page);
+
+      // Wait for the content to load with longer timeout for WSJ
+      try {
+        if (this.source.selectors.article) {
+          await page.waitForSelector(this.source.selectors.article, {
+            timeout: timeout,
+          });
+        } else {
+          await page.waitForSelector(this.source.selectors.title, {
+            timeout: timeout,
+          });
+        }
+      } catch (error) {
+        logger.warn(
+          `Selector timeout for ${this.source.name}, proceeding anyway`
+        );
+        // Continue anyway to try to extract what we can
       }
 
       const results: ScraperResult[] = [];
@@ -59,6 +79,10 @@ export class PuppeteerScraper extends BaseScraper {
 
       // Extract data from the page
       const articles = await page.$$(articleSelector);
+
+      logger.info(
+        `Found ${articles.length} article elements on ${this.source.name}`
+      );
 
       // Process each article
       for (const article of articles) {
@@ -101,6 +125,96 @@ export class PuppeteerScraper extends BaseScraper {
         await browser.close();
       }
     }
+  }
+
+  /**
+   * Handle common cookie consent dialogs
+   */
+  private async handleCookieConsent(page: Page): Promise<void> {
+    try {
+      // Common cookie consent button selectors
+      const consentSelectors = [
+        'button[aria-label="Accept all"]',
+        'button[aria-label="agree"]',
+        'button.accept-cookies-button',
+        'button.consent-btn',
+        '#onetrust-accept-btn-handler',
+        '.accept-cookies',
+        '[aria-label="Accept cookies"]',
+        'button:has-text("Accept")',
+        'button:has-text("Accept All")',
+        'button:has-text("I Accept")',
+        'button:has-text("OK")',
+        'button:has-text("Got it")',
+        '.gdpr-agree',
+      ];
+
+      for (const selector of consentSelectors) {
+        try {
+          const button = await page.$(selector);
+          if (button) {
+            logger.info('Attempting to click cookie consent button');
+            await button.click();
+            await this.sleepInPage(page, 1000);
+            break;
+          }
+        } catch (e) {
+          // Ignore errors for missing selectors
+        }
+      }
+    } catch (error) {
+      logger.warn('Error handling cookie consent, continuing anyway', error);
+    }
+  }
+
+  /**
+   * Handle paywalls for specific sites
+   */
+  private async handlePaywall(page: Page): Promise<void> {
+    try {
+      // Special handling for Wall Street Journal
+      if (this.source.name.includes('Wall Street Journal')) {
+        // Try to dismiss any popup dialogs
+        try {
+          const closeButtons = [
+            '.close-btn',
+            '.close-button',
+            '[aria-label="Close"]',
+            'button.snippet-close',
+            '.dialog-close',
+            '.paywall-close',
+          ];
+
+          for (const selector of closeButtons) {
+            const button = await page.$(selector);
+            if (button) {
+              await button.click();
+              await this.sleepInPage(page, 500);
+            }
+          }
+
+          // Scroll down to trigger lazy loading
+          await page.evaluate(() => {
+            window.scrollBy(0, 500);
+          });
+
+          await this.sleepInPage(page, 2000);
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    } catch (error) {
+      logger.warn('Error handling paywall, continuing anyway', error);
+    }
+  }
+
+  /**
+   * Sleep helper that works with puppeteer
+   */
+  private async sleepInPage(page: Page, ms: number): Promise<void> {
+    await page.evaluate(timeout => {
+      return new Promise(resolve => setTimeout(resolve, timeout));
+    }, ms);
   }
 
   private async extractArticleData(
@@ -175,7 +289,10 @@ export class PuppeteerScraper extends BaseScraper {
 
               // Get src or data-src attribute
               let src =
-                imgEl.getAttribute('src') || imgEl.getAttribute('data-src');
+                imgEl.getAttribute('src') ||
+                imgEl.getAttribute('data-src') ||
+                imgEl.getAttribute('srcset') ||
+                imgEl.getAttribute('data-srcset');
 
               // Make relative URLs absolute
               if (src && !src.startsWith('http')) {

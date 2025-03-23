@@ -1,56 +1,58 @@
 import { ISource } from '../models/Source';
 
 /**
- * Sample sources for demonstration
+ * News sources for today's headlines from major outlets
  */
 export const sampleSources: Partial<ISource>[] = [
   {
-    name: 'The New York Times - Technology',
-    url: 'https://www.nytimes.com/section/technology',
+    name: 'The New York Times - Today',
+    url: 'https://www.nytimes.com',
     selectors: {
-      article: 'div.css-1l4w6pd',
-      title: 'h2',
-      content: 'p.css-1echdzn',
-      author: 'span.css-1n7hynb',
+      article: 'article[data-testid="block-layout-renderer"]',
+      title: 'h3, h2',
+      content: 'p, div.summary, span.css-1echdzn',
+      author: 'span[itemprop="name"]',
       publishedAt: 'time',
       image: 'img',
-      summary: 'p.css-1echdzn',
+      summary: 'p, div.summary',
     },
-    category: 'Technology',
+    category: 'News',
     requiresJavaScript: true,
-    scrapingFrequency: 60,
+    scrapingFrequency: 30, // Check every 30 minutes
     enabled: true,
   },
   {
-    name: 'BBC News - Technology',
-    url: 'https://www.bbc.com/news/technology',
+    name: 'BBC News - Headlines',
+    url: 'https://www.bbc.com/news',
     selectors: {
       article: 'div.gs-c-promo',
       title: 'h3.gs-c-promo-heading__title',
       content: 'p.gs-c-promo-summary',
+      publishedAt: 'time',
       image: 'img.gs-c-promo-image',
       summary: 'p.gs-c-promo-summary',
     },
-    category: 'Technology',
+    category: 'News',
     requiresJavaScript: false,
-    scrapingFrequency: 120,
+    scrapingFrequency: 30,
     enabled: true,
   },
   {
-    name: 'TechCrunch',
-    url: 'https://techcrunch.com/',
+    name: 'Wall Street Journal - Today',
+    url: 'https://www.wsj.com',
     selectors: {
-      article: 'article.post-block',
-      title: 'h2 a',
-      content: 'div.post-block__content',
-      author: 'span.river-byline__authors',
-      publishedAt: 'time',
-      image: 'img.post-block__media',
-      summary: 'div.post-block__content',
+      article:
+        'article, div.article-wrap, div.WSJTheme--story, div[data-module-zone="article"]',
+      title: 'h1, h2, h3, .article-name, .WSJTheme--headline, .headline',
+      content: 'p, .article-summary, .snippet, .summary, .WSJTheme--summary',
+      author: 'div.byline, .author, span[itemprop="author"]',
+      publishedAt: 'time, .timestamp, .date-stamp, [datetime]',
+      image: 'img, picture source',
+      summary: 'p, .summary, .snippet',
     },
-    category: 'Technology',
+    category: 'News',
     requiresJavaScript: true,
-    scrapingFrequency: 90,
+    scrapingFrequency: 30,
     enabled: true,
   },
 ];
