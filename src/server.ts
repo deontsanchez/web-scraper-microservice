@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import rateLimiter from './middlewares/rateLimit.middleware';
+import routes from './routes';
 
 // Load environment variables
 dotenv.config();
@@ -19,12 +20,7 @@ app.use(express.json());
 app.use('/api', rateLimiter);
 
 // Define routes
-app.use('/api/scraper', (req, res) => {
-  res.json({
-    message:
-      'Scraper endpoint placeholder - routes will be connected when completed',
-  });
-});
+app.use('/api', routes);
 
 // Error handling middleware
 app.use(
