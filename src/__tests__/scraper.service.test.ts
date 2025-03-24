@@ -1,10 +1,20 @@
 import puppeteer from 'puppeteer';
 import { scrapeUrl } from '../services/scraper.service';
 import { getRandomUserAgent, extractDomain } from '../utils/scraper.utils';
+import logger from '../utils/logger';
 
 // Mock puppeteer
 jest.mock('puppeteer', () => ({
   launch: jest.fn(),
+}));
+
+// Mock logger
+jest.mock('../utils/logger', () => ({
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+  http: jest.fn(),
 }));
 
 // Mock scraper.utils

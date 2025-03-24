@@ -1,5 +1,6 @@
 import puppeteer from 'puppeteer';
 import { getRandomUserAgent, extractDomain } from '../utils/scraper.utils';
+import logger from '../utils/logger';
 
 /**
  * Scrape content from a URL using Puppeteer
@@ -8,34 +9,48 @@ import { getRandomUserAgent, extractDomain } from '../utils/scraper.utils';
  */
 export const scrapeUrl = async (url: string) => {
   let browser;
+  logger.info(`Starting to scrape URL: ${url}`);
+
   try {
     // Launch browser
+    logger.info(`Launching headless browser`);
     browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
+    logger.info(`Browser launched successfully`);
 
     // Open new page
+    logger.info(`Opening new browser page`);
     const page = await browser.newPage();
+    logger.info(`Browser page opened successfully`);
 
     // Set random user agent
-    await page.setUserAgent(getRandomUserAgent());
+    const userAgent = getRandomUserAgent();
+    logger.info(`Setting user agent: ${userAgent}`);
+    await page.setUserAgent(userAgent);
 
     // Set viewport
+    logger.info(`Setting viewport dimensions: 1280x800`);
     await page.setViewport({ width: 1280, height: 800 });
 
     // Setup dialog handling (auto-dismiss alerts, confirms, prompts)
+    logger.info(`Setting up dialog handler to auto-dismiss dialogs`);
     page.on('dialog', async dialog => {
-      console.log(
+      logger.info(
         `Dialog detected: ${dialog.type()} with message: ${dialog.message()}`
       );
       await dialog.dismiss();
+      logger.info(`Dialog dismissed successfully`);
     });
 
     // Navigate to URL
+    logger.info(`Navigating to ${url}`);
     await page.goto(url, { waitUntil: 'networkidle2' });
+    logger.info(`Navigation to ${url} completed`);
 
     // Try to handle common cookie banners and popups
+    logger.info(`Attempting to handle cookie banners and popups`);
     try {
       // Common cookie consent selectors
       const cookieSelectors = [
@@ -52,19 +67,25 @@ export const scrapeUrl = async (url: string) => {
       // Try clicking elements that might dismiss popups
       for (const selector of cookieSelectors) {
         if ((await page.$(selector)) !== null) {
+          logger.info(`Found cookie banner element with selector: ${selector}`);
           await page
             .click(selector)
-            .catch(() => console.log(`Could not click: ${selector}`));
+            .catch(err =>
+              logger.info(`Could not click: ${selector}`, { error: err })
+            );
+          logger.info(`Clicked cookie banner element: ${selector}`);
           // Wait a short time after clicking
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
+      logger.info(`Completed cookie banner and popup handling`);
     } catch (error) {
-      console.log('Error handling cookie banners:', error);
+      logger.warn('Error handling cookie banners', { error });
       // Continue execution even if banner handling fails
     }
 
     // Detect paywalls
+    logger.info(`Checking for paywalls`);
     const hasPaywall = await page.evaluate(() => {
       // Text-based detection in body
       const bodyText = document.body.textContent?.toLowerCase() || '';
@@ -135,18 +156,25 @@ export const scrapeUrl = async (url: string) => {
     });
 
     if (hasPaywall) {
-      console.log(
+      logger.info(
         `Paywall detected on ${url}, but continuing to scrape content`
       );
+    } else {
+      logger.info(`No paywall detected on ${url}`);
     }
 
     // Get page title
+    logger.info(`Extracting page title`);
     const title = await page.title();
+    logger.info(`Page title extracted: "${title}"`);
 
     // Get all text content
+    logger.info(`Extracting page text content`);
     const textContent = await page.evaluate(() => document.body.innerText);
+    logger.info(`Text content extracted (${textContent.length} characters)`);
 
     // Get images
+    logger.info(`Extracting and filtering images`);
     const images = await page.evaluate(() => {
       // Find all images
       const allImages = Array.from(document.querySelectorAll('img'));
@@ -216,8 +244,9 @@ export const scrapeUrl = async (url: string) => {
         height: img.height,
       }));
     });
+    logger.info(`Found ${images.length} non-advertisement images`);
 
-    return {
+    const results = {
       title,
       url,
       domain: extractDomain(url),
@@ -225,8 +254,17 @@ export const scrapeUrl = async (url: string) => {
       images,
       paywallDetected: hasPaywall,
     };
+
+    logger.info(`Scraping of ${url} completed successfully`, {
+      domain: results.domain,
+      imageCount: images.length,
+      textLength: textContent.length,
+      paywallDetected: hasPaywall,
+    });
+
+    return results;
   } catch (error) {
-    console.error('Error scraping URL:', error);
+    logger.error(`Failed to scrape ${url}`, { error });
     throw new Error(
       `Failed to scrape ${url}: ${
         error instanceof Error ? error.message : 'Unknown error'
@@ -235,7 +273,9 @@ export const scrapeUrl = async (url: string) => {
   } finally {
     // Close browser
     if (browser) {
+      logger.info(`Closing browser`);
       await browser.close();
+      logger.info(`Browser closed successfully`);
     }
   }
 };
