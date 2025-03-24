@@ -135,44 +135,81 @@ export const scrapeUrl = async (url: string) => {
     });
 
     if (hasPaywall) {
-      console.log(`Paywall detected on ${url}`);
-      return {
-        url,
-        domain: extractDomain(url),
-        paywallDetected: true,
-        message: 'Scraping stopped due to paywall detection',
-      };
+      console.log(
+        `Paywall detected on ${url}, but continuing to scrape content`
+      );
     }
 
     // Get page title
     const title = await page.title();
 
-    // Get page content
-    const content = await page.content();
-
     // Get all text content
     const textContent = await page.evaluate(() => document.body.innerText);
 
-    // Get all links
-    const links = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('a')).map(link => ({
-        text: link.textContent?.trim() || '',
-        href: link.href,
-      }));
-    });
-
-    // Get meta tags
-    const metaTags = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('meta')).map(meta => ({
-        name: meta.getAttribute('name'),
-        property: meta.getAttribute('property'),
-        content: meta.getAttribute('content'),
-      }));
-    });
-
     // Get images
     const images = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('img')).map(img => ({
+      // Find all images
+      const allImages = Array.from(document.querySelectorAll('img'));
+
+      // Filter out ad images based on common patterns
+      const filteredImages = allImages.filter(img => {
+        const src = img.src.toLowerCase();
+        const alt = (img.alt || '').toLowerCase();
+        const classes = img.className.toLowerCase();
+        const id = img.id.toLowerCase();
+
+        // Check parent elements for ad-related attributes
+        let parent = img.parentElement;
+        let isInAdContainer = false;
+        let depth = 0;
+
+        // Check up to 3 levels of parent elements for ad containers
+        while (parent && depth < 3) {
+          const parentClasses = parent.className.toLowerCase();
+          const parentId = parent.id.toLowerCase();
+
+          if (
+            parentClasses.match(/ad(s|vert|vertisement)?[-_]?/i) ||
+            parentId.match(/ad(s|vert|vertisement)?[-_]?/i) ||
+            parent.getAttribute('data-ad') ||
+            parent.getAttribute('data-advertisement') ||
+            parent.getAttribute('data-adunit')
+          ) {
+            isInAdContainer = true;
+            break;
+          }
+
+          parent = parent.parentElement;
+          depth++;
+        }
+
+        // Check if the image is likely an ad
+        const isLikelyAd =
+          // Image from ad networks or with ad-related URLs
+          src.includes('/ads/') ||
+          src.includes('/adserver/') ||
+          src.includes('/advert') ||
+          src.includes('/doubleclick.') ||
+          src.includes('pagead') ||
+          src.includes('google.com/ads') ||
+          src.includes('googleads') ||
+          src.includes('cloudfront.net/ads') ||
+          // Image with ad-related alt text
+          alt.includes('advertisement') ||
+          alt.includes('sponsor') ||
+          // Image with ad-related classes or IDs
+          classes.match(/ad(s|vert|vertisement)?[-_]?/i) ||
+          id.match(/ad(s|vert|vertisement)?[-_]?/i) ||
+          // Check size for banner-like dimensions
+          (img.width > 300 && img.height < 100) ||
+          // In an ad container
+          isInAdContainer;
+
+        // Keep images that aren't likely ads
+        return !isLikelyAd;
+      });
+
+      return filteredImages.map(img => ({
         src: img.src,
         alt: img.alt,
         width: img.width,
@@ -185,10 +222,8 @@ export const scrapeUrl = async (url: string) => {
       url,
       domain: extractDomain(url),
       textContent,
-      links,
-      metaTags,
       images,
-      htmlContent: content,
+      paywallDetected: hasPaywall,
     };
   } catch (error) {
     console.error('Error scraping URL:', error);

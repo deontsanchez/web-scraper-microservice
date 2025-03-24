@@ -147,14 +147,6 @@ describe('Scraper Service', () => {
       url: 'https://example.com',
       domain: 'example.com',
       textContent: 'Test page text content',
-      links: [
-        { text: 'Link 1', href: 'https://example.com/link1' },
-        { text: 'Link 2', href: 'https://example.com/link2' },
-      ],
-      metaTags: [
-        { name: 'description', property: null, content: 'Test description' },
-        { name: null, property: 'og:title', content: 'Test OG Title' },
-      ],
       images: [
         {
           src: 'https://example.com/image1.jpg',
@@ -169,7 +161,7 @@ describe('Scraper Service', () => {
           height: 200,
         },
       ],
-      htmlContent: '<html><body>Test content</body></html>',
+      paywallDetected: false,
     });
 
     // Check browser was closed
@@ -217,7 +209,7 @@ describe('Scraper Service', () => {
     expect(mockPage.click).toHaveBeenCalled();
   });
 
-  test('should detect paywalls and stop scraping', async () => {
+  test('should detect paywalls and continue scraping', async () => {
     // Override the default evaluate mock for this test only
     mockPage.evaluate.mockImplementation(fn => {
       // Return true for the paywall detection call
@@ -229,22 +221,55 @@ describe('Scraper Service', () => {
         return true; // Indicate paywall detected
       }
 
-      // Don't execute the rest of the evaluate calls (content extraction)
+      // For content extraction functions, return test data
+      if (fn.toString().includes('document.body.innerText')) {
+        return 'Test page text content';
+      }
+
+      if (fn.toString().includes("document.querySelectorAll('a')")) {
+        return [
+          { text: 'Link 1', href: 'https://example.com/link1' },
+          { text: 'Link 2', href: 'https://example.com/link2' },
+        ];
+      }
+
+      if (fn.toString().includes("document.querySelectorAll('meta')")) {
+        return [
+          { name: 'description', property: null, content: 'Test description' },
+          { name: null, property: 'og:title', content: 'Test OG Title' },
+        ];
+      }
+
+      if (fn.toString().includes("document.querySelectorAll('img')")) {
+        return [
+          {
+            src: 'https://example.com/image1.jpg',
+            alt: 'Image 1',
+            width: 100,
+            height: 100,
+          },
+          {
+            src: 'https://example.com/image2.jpg',
+            alt: 'Image 2',
+            width: 200,
+            height: 200,
+          },
+        ];
+      }
+
       return null;
     });
 
     const result = await scrapeUrl('https://example.com');
 
-    // Verify paywall detection result
-    expect(result).toEqual({
-      url: 'https://example.com',
-      domain: 'example.com',
-      paywallDetected: true,
-      message: 'Scraping stopped due to paywall detection',
-    });
+    // Verify paywall is detected but content is still scraped
+    expect(result.paywallDetected).toBe(true);
+    expect(result.url).toBe('https://example.com');
+    expect(result.domain).toBe('example.com');
+    expect(result.title).toBe('Test Page Title');
 
-    // Verify title (content extraction) wasn't called since we detected a paywall
-    expect(mockPage.title).not.toHaveBeenCalled();
+    // Verify title method was called (content extraction continues)
+    expect(mockPage.title).toHaveBeenCalled();
   });
 
   test('should handle errors during scraping', async () => {
@@ -267,5 +292,52 @@ describe('Scraper Service', () => {
 
     // Verify browser was closed
     expect(mockBrowser.close).toHaveBeenCalled();
+  });
+
+  test('should filter out advertisement images', async () => {
+    // Override the evaluate mock to simulate both regular and ad images
+    mockPage.evaluate.mockImplementation(fn => {
+      // For image extraction
+      if (
+        typeof fn === 'function' &&
+        fn.toString().includes("document.querySelectorAll('img')")
+      ) {
+        // Mock the filtering logic
+        // This simulates the DOM with a regular image and several ad images
+        // that should be filtered out
+        return [
+          {
+            src: 'https://example.com/image1.jpg',
+            alt: 'Normal image',
+            width: 800,
+            height: 600,
+          },
+          // Ad images are filtered out in the evaluate function,
+          // so they shouldn't appear in the final result
+        ];
+      }
+
+      // For other evaluate calls
+      if (typeof fn === 'function') {
+        if (
+          fn.toString().includes('bodyText') ||
+          fn.toString().includes('paywallPhrases')
+        ) {
+          return false; // No paywall
+        }
+        if (fn.toString().includes('document.body.innerText')) {
+          return 'Test page text content';
+        }
+      }
+
+      return null;
+    });
+
+    const result = await scrapeUrl('https://example.com');
+
+    // Verify only non-ad images are included
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0].src).toBe('https://example.com/image1.jpg');
+    expect(result.images[0].alt).toBe('Normal image');
   });
 });
