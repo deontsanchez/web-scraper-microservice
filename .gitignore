@@ -26,6 +26,7 @@ logs/
 *.log.json
 
 # Coverage directory used by tools like istanbul
+coverage/
 coverage/*
 *.lcov
 
@@ -44,6 +45,7 @@ Desktop.ini
 
 # Editor directories and files
 .idea/
+.vscode/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
