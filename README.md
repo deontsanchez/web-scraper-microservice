@@ -71,13 +71,25 @@ POST /api/scraper
 
 #### Request Body
 
+For scraping a single URL:
+
 ```json
 {
   "url": "https://example.com"
 }
 ```
 
+For scraping multiple URLs concurrently:
+
+```json
+{
+  "urls": ["https://example.com", "https://example.org", "https://example.net"]
+}
+```
+
 #### Response
+
+For a single URL:
 
 ```json
 {
@@ -96,6 +108,47 @@ POST /api/scraper
     "metaTags": [...],
     "images": [...],
     "htmlContent": "..."
+  }
+}
+```
+
+For multiple URLs:
+
+```json
+{
+  "success": true,
+  "data": {
+    "results": [
+      {
+        "title": "Example Domain",
+        "url": "https://example.com",
+        "domain": "example.com",
+        "textContent": "...",
+        "links": [...],
+        "metaTags": [...],
+        "images": [...],
+        "htmlContent": "..."
+      },
+      {
+        "title": "Example Domain",
+        "url": "https://example.org",
+        "domain": "example.org",
+        "textContent": "...",
+        "links": [...],
+        "metaTags": [...],
+        "images": [...],
+        "htmlContent": "..."
+      }
+    ],
+    "errors": [
+      {
+        "url": "https://invalid-url.com",
+        "error": "Failed to navigate to URL: net::ERR_NAME_NOT_RESOLVED"
+      }
+    ],
+    "totalProcessed": 3,
+    "successCount": 2,
+    "errorCount": 1
   }
 }
 ```

@@ -1,13 +1,44 @@
 import puppeteer from 'puppeteer';
 import { getRandomUserAgent, extractDomain } from '../utils/scraper.utils';
 import logger from '../utils/logger';
+import os from 'os';
+
+// Define interfaces for scraped data
+interface ScrapedImage {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+}
+
+interface ScrapedData {
+  title: string;
+  url: string;
+  domain: string;
+  textContent: string;
+  images: ScrapedImage[];
+  paywallDetected: boolean;
+}
+
+interface ScraperError {
+  url: string;
+  error: string;
+}
+
+interface MultiScrapeResult {
+  results: ScrapedData[];
+  errors?: ScraperError[];
+  totalProcessed: number;
+  successCount: number;
+  errorCount: number;
+}
 
 /**
  * Scrape content from a URL using Puppeteer
  * @param url - The URL to scrape
  * @returns Object containing scraped data
  */
-export const scrapeUrl = async (url: string) => {
+export const scrapeUrl = async (url: string): Promise<ScrapedData> => {
   let browser;
   logger.info(`Starting to scrape URL: ${url}`);
 
@@ -278,4 +309,74 @@ export const scrapeUrl = async (url: string) => {
       logger.info(`Browser closed successfully`);
     }
   }
+};
+
+/**
+ * Scrape content from multiple URLs concurrently
+ * @param urls - Array of URLs to scrape
+ * @returns Array of objects containing scraped data
+ */
+export const scrapeMultipleUrls = async (
+  urls: string[]
+): Promise<MultiScrapeResult> => {
+  logger.info(`Starting to scrape multiple URLs: ${urls.length} URLs provided`);
+
+  // Calculate optimal concurrency based on available CPU cores
+  // Use 75% of available cores to avoid system overload
+  const cpuCount = os.cpus().length;
+  const concurrencyLimit = Math.max(1, Math.floor(cpuCount * 0.75));
+  logger.info(
+    `Using concurrency limit of ${concurrencyLimit} based on ${cpuCount} CPU cores`
+  );
+
+  // Create batches of URLs to process
+  const results: ScrapedData[] = [];
+  const errors: ScraperError[] = [];
+
+  // Process URLs in batches with concurrency limit
+  for (let i = 0; i < urls.length; i += concurrencyLimit) {
+    const batch = urls.slice(i, i + concurrencyLimit);
+    logger.info(
+      `Processing batch of ${batch.length} URLs (${i + 1} to ${Math.min(
+        i + concurrencyLimit,
+        urls.length
+      )} of ${urls.length})`
+    );
+
+    // Process each URL in the batch concurrently
+    const batchPromises = batch.map(async batchUrl => {
+      try {
+        return await scrapeUrl(batchUrl);
+      } catch (error) {
+        logger.error(
+          `Error scraping URL ${batchUrl}: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`
+        );
+        errors.push({
+          url: batchUrl,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+        return null;
+      }
+    });
+
+    // Wait for all promises in the batch to resolve
+    const batchResults = await Promise.all(batchPromises);
+
+    // Filter out null results (errors) and add to results array
+    results.push(...batchResults.filter(result => result !== null));
+  }
+
+  logger.info(
+    `Completed scraping ${urls.length} URLs. Successfully scraped: ${results.length}, Errors: ${errors.length}`
+  );
+
+  return {
+    results,
+    errors: errors.length > 0 ? errors : undefined,
+    totalProcessed: urls.length,
+    successCount: results.length,
+    errorCount: errors.length,
+  };
 };
