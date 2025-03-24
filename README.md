@@ -23,6 +23,7 @@ A dynamic web scraper microservice built with Node.js and TypeScript that can sc
 - Express.js
 - Puppeteer (for browser automation)
 - Cors, Helmet (for security)
+- Docker for containerization
 
 ## Installation
 
@@ -59,6 +60,43 @@ npm run dev
 ```
 npm run build
 npm start
+```
+
+## Docker Deployment
+
+### Using Docker Compose (Recommended)
+
+1. Make sure Docker and Docker Compose are installed on your system
+2. Run the application:
+
+```
+docker-compose up -d
+```
+
+3. To stop the application:
+
+```
+docker-compose down
+```
+
+### Using Docker
+
+1. Build the Docker image:
+
+```
+docker build -t web-scraper-microservice .
+```
+
+2. Run the container:
+
+```
+docker run -p 3000:3000 -d --name web-scraper web-scraper-microservice
+```
+
+3. To stop the container:
+
+```
+docker stop web-scraper
 ```
 
 ## API Endpoints
